@@ -37,7 +37,7 @@ const monthlyData = [
 const materialData = [
   { name: 'Paper', amount: 25, color: '#34d399' },
   { name: 'Glass', amount: 18, color: '#60a5fa' },
-  { name: 'Plastic', amount: 22, color: '#f472b6' },
+  { name: 'Food_organics', amount: 22, color: '#f472b6' },
   { name: 'Metal', amount: 12, color: '#a78bfa' },
   { name: 'Cardboard', amount: 8, color: '#fbbf24' }
 ];
@@ -50,19 +50,19 @@ export default function Analysis() {
     // Example calculations based on average values
     const paper = 25; // from Stats
     const glass = 18;
-    const plastic = 22;
+    const Food_organics = 22;
     const metal = 12;
     const cardboard = 8;
     const organicWaste = 15;
     const nonRecyclables = 28;
 
-    const totalRecycled = paper + glass + plastic + metal + cardboard;
+    const totalRecycled = paper + glass + Food_organics + metal + cardboard;
     const totalWaste = organicWaste + nonRecyclables;
 
     // Approximate calculations
     const treesPreserved = (paper + cardboard) * 0.12;
     const co2Reduced = totalRecycled * 2.5; // kg of CO2
-    const waterSaved = (glass * 4) + (paper * 10) + (plastic * 3); // liters
+    const waterSaved = (glass * 4) + (paper * 10) + (Food_organics * 3); // liters
     const energySaved = totalRecycled * 4.5; // kWh
 
     return {

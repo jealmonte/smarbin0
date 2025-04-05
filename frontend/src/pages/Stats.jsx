@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Recycle, Trash, Coins } from 'lucide-react';
 
@@ -15,9 +15,44 @@ const StatCard = ({ title, value, icon: Icon, className }) => (
 );
 
 export default function Stats() {
-  const totalRecycled = 85; // Sum of all recycled items
-  const totalWaste = 43; // Sum of organic waste and non-recyclables
-  const recyclingRate = ((totalRecycled / (totalRecycled + totalWaste)) * 100).toFixed(1);
+  const [stats, setStats] = useState({
+    paper: 0,
+    glass: 0,
+    food_organics: 0,
+    metal: 0,
+    cardboard: 0,
+    miscellaneous_trash: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/waste-statistics/4/');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setStats(data);
+        setLoading(false);
+      } catch (err) {
+        setError('Failed to fetch data');
+        setLoading(false);
+        console.error('Error fetching data:', err);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) return <div>Loading statistics...</div>;
+  if (error) return <div>Error: {error}</div>;
+
+  const totalRecycled = stats.paper + stats.glass + stats.metal + stats.cardboard;
+  const non_recyclables = stats.food_organics + stats.miscellaneous_trash;
+  const totalWaste = totalRecycled + non_recyclables;
+  const recyclingRate = ((totalRecycled / totalWaste) * 100).toFixed(1);
 
   return (
     <div>
@@ -37,18 +72,17 @@ export default function Stats() {
                   <span className="text-2xl">Total: {totalRecycled}</span>
                   <div className="flex items-center gap-2 bg-emerald-700/50 px-4 py-2 rounded-lg">
                     <Coins size={16} className="text-white/80" />
-                    <span className="text-lg font-semibold">{totalRecycled} binbucks</span>
+                    <span className="text-lg font-semibold">{totalRecycled * 25} binbucks</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StatCard title="Paper" value="25" icon={Recycle} className="bg-emerald-700" />
-            <StatCard title="Glass" value="18" icon={Recycle} className="bg-emerald-700" />
-            <StatCard title="Plastic" value="22" icon={Recycle} className="bg-emerald-700" />
-            <StatCard title="Metal" value="12" icon={Recycle} className="bg-emerald-700" />
-            <StatCard title="Cardboard" value="8" icon={Recycle} className="bg-emerald-700" />
+            <StatCard title="Paper" value={stats.paper} icon={Recycle} className="bg-emerald-700" />
+            <StatCard title="Glass" value={stats.glass} icon={Recycle} className="bg-emerald-700" />
+            <StatCard title="Metal" value={stats.metal} icon={Recycle} className="bg-emerald-700" />
+            <StatCard title="Cardboard" value={stats.cardboard} icon={Recycle} className="bg-emerald-700" />
           </div>
         </div>
 
@@ -58,8 +92,7 @@ export default function Stats() {
             <h2 className="text-4xl font-bold">Trash</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StatCard title="Organic Waste" value="15" icon={Trash} className="bg-gray-700" />
-            <StatCard title="Non-recyclables" value="28" icon={Trash} className="bg-gray-700" />
+            <StatCard title="Non-recyclables" value={non_recyclables} icon={Trash} className="bg-gray-700" />
           </div>
         </div>
       </motion.div>
