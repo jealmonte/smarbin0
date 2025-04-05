@@ -6,6 +6,7 @@ import Stats from './Stats';
 import AuthNavbar from '../components/AuthNavbar';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import CameraControl from '../components/CameraControl';
 
 export default function Dashboard() {
   const { loading, user } = useAuth();
@@ -86,6 +87,7 @@ export default function Dashboard() {
           </motion.div>
 
           <Stats />
+          <CameraControl />
 
           <div className="text-center mt-12 mb-8">
             <Link 

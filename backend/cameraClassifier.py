@@ -10,6 +10,8 @@ import os
 import sys
 import django
 import matplotlib.pyplot as plt
+import argparse
+import signal
 
 # Add the path to your Django project
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -21,10 +23,10 @@ django.setup()
 
 # Import Django models
 from django.contrib.auth.models import User
-from app.models import WasteStatistics
+from app.models import WasteStatistics, User as CustomUser
 
 class WasteClassifier:
-    def __init__(self, model_path, categories_path, user_id=1):
+    def __init__(self, model_path, categories_path, supabase_uid=None):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_path = os.path.join(current_dir, model_path)
         self.categories_path = os.path.join(current_dir, categories_path)
@@ -36,7 +38,7 @@ class WasteClassifier:
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ])
         self.stats = {category: 0 for category in self.categories}
-        self.user_id = user_id
+        self.supabase_uid = supabase_uid
     
     def load_model(self, model_path, num_classes):
         model = models.resnet50(pretrained=False)
@@ -75,35 +77,85 @@ class WasteClassifier:
     
     def update_stats(self, category):
         self.stats[category] += 1
+        
+        if not self.supabase_uid:
+            print("No Supabase user ID provided, skipping database update")
+            self.save_stats()
+            return
+            
         try:
-            user = User.objects.get(id=self.user_id)
+            # Get the user by supabase_uid instead of Django user ID
+            user = CustomUser.objects.get(supabase_uid=self.supabase_uid)
             stats, created = WasteStatistics.objects.get_or_create(user=user)
-            setattr(stats, category.replace(' ', '_'), getattr(stats, category.replace(' ', '_')) + 1)
-            stats.save()
-            print(f"Updated database stats for {category}")
+            
+            # Convert category name to database field name (e.g., "Food Organics" -> "food_organics")
+            field_name = category.lower().replace(' ', '_')
+            
+            # Check if the field exists in the model
+            if hasattr(stats, field_name):
+                # Get current value and increment by 1
+                current_value = getattr(stats, field_name)
+                setattr(stats, field_name, current_value + 1)
+                stats.save()
+                print(f"Updated database stats for {category} (user: {user.email})")
+            else:
+                print(f"Warning: Field {field_name} not found in WasteStatistics model")
+                
+        except CustomUser.DoesNotExist:
+            print(f"Error: User with Supabase ID {self.supabase_uid} not found")
         except Exception as e:
             print(f"Error updating database: {e}")
+            
         self.save_stats()
     
     def save_stats(self):
         with open(os.path.join(current_dir, 'waste_stats.json'), 'w') as f:
             json.dump(self.stats, f)
 
-def start_camera_classification():
-    user, created = User.objects.get_or_create(username='testuser')
-    if created:
-        user.set_password('password123')
-        user.save()
-        print(f"Created test user with ID: {user.id}")
+cap = None
+classifier = None
+
+def handle_termination(signum, frame):
+    global cap, classifier  # Add classifier here
+    print("Termination signal received, shutting down...")
+    if cap is not None:
+        cap.release()
+    
+    # Save stats before exiting
+    if classifier is not None:
+        classifier.save_stats()
+        
+    plt.close('all')
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, handle_termination)
+signal.signal(signal.SIGINT, handle_termination)
+
+def start_camera_classification(supabase_uid=None):
+    global cap, classifier
+    # If supabase_uid is provided, use it; otherwise, use a test user
+    if supabase_uid:
+        try:
+            # Get the user by supabase_uid
+            from app.models import User
+            user = User.objects.get(supabase_uid=supabase_uid)
+            print(f"Using authenticated user with Supabase ID: {supabase_uid}")
+        except Exception as e:
+            print(f"Error finding user with Supabase ID {supabase_uid}: {e}")
+            # Continue with default user
+            user, created = User.objects.get_or_create(username='testuser')
     else:
-        print(f"Using existing user with ID: {user.id}")
+        # Fallback to test user
+        user, created = User.objects.get_or_create(username='testuser')
+        print(f"No Supabase ID provided, using {'new ' if created else ''}test user with ID: {user.id}")
     
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Error: Could not open camera.")
         return
     
-    classifier = WasteClassifier('best_waste_classifier.pth', 'waste_categories.pth', user.id)
+    classifier = WasteClassifier('best_waste_classifier.pth', 'waste_categories.pth', supabase_uid)
     
     bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=16, detectShadows=True)
     min_contour_area = 5000
@@ -164,14 +216,23 @@ def start_camera_classification():
     cap.release()
     plt.close('all')
     
-    stats = WasteStatistics.objects.get(user=user)
-    print("\nFinal Statistics from Database:")
-    print(f"Cardboard: {stats.cardboard}")
-    print(f"Food Organics: {stats.food_organics}")
-    print(f"Glass: {stats.glass}")
-    print(f"Metal: {stats.metal}")
-    print(f"Miscellaneous Trash: {stats.miscellaneous_trash}")
-    print(f"Paper: {stats.paper}")
+    if supabase_uid:
+        try:
+            user = CustomUser.objects.get(supabase_uid=supabase_uid)
+            stats = WasteStatistics.objects.get(user=user)
+            print("\nFinal Statistics from Database:")
+            print(f"Cardboard: {stats.cardboard}")
+            print(f"Food Organics: {stats.food_organics}")
+            print(f"Glass: {stats.glass}")
+            print(f"Metal: {stats.metal}")
+            print(f"Miscellaneous Trash: {stats.miscellaneous_trash}")
+            print(f"Paper: {stats.paper}")
+        except Exception as e:
+            print(f"Error retrieving final statistics: {e}")
 
 if __name__ == "__main__":
-    start_camera_classification()
+    parser = argparse.ArgumentParser(description='Run waste classification camera')
+    parser.add_argument('--supabase_uid', type=str, help='Supabase user ID')
+    args = parser.parse_args()
+    
+    start_camera_classification(args.supabase_uid)

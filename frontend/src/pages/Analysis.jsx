@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Leaf, TreePine, Factory, CloudRain } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import AuthNavbar from '../components/AuthNavbar';
+import { useAuth } from '../contexts/AuthContext';
 
 const ImpactCard = ({ title, value, unit, icon: Icon, description }) => (
   <motion.div
@@ -25,56 +26,114 @@ const ImpactCard = ({ title, value, unit, icon: Icon, description }) => (
   </motion.div>
 );
 
-const monthlyData = [
-  { name: 'Jan', recycled: 42, waste: 28 },
-  { name: 'Feb', recycled: 48, waste: 25 },
-  { name: 'Mar', recycled: 55, waste: 22 },
-  { name: 'Apr', recycled: 62, waste: 20 },
-  { name: 'May', recycled: 70, waste: 18 },
-  { name: 'Jun', recycled: 85, waste: 15 }
-];
-
-const materialData = [
-  { name: 'Paper', amount: 25, color: '#34d399' },
-  { name: 'Glass', amount: 18, color: '#60a5fa' },
-  { name: 'Food_organics', amount: 22, color: '#f472b6' },
-  { name: 'Metal', amount: 12, color: '#a78bfa' },
-  { name: 'Cardboard', amount: 8, color: '#fbbf24' }
-];
-
 export default function Analysis() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [stats, setStats] = useState({
+    paper: 0,
+    glass: 0,
+    food_organics: 0,
+    metal: 0,
+    cardboard: 0,
+    miscellaneous_trash: 0
+  });
+  const [loading, setLoading] = useState(true);
 
-  // Calculate impact based on recycling data
+  const fetchData = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/waste-statistics/?supabase_uid=${user.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const intervalId = setInterval(fetchData, 10000);
+    return () => clearInterval(intervalId);
+  }, [user]);
+
+  const materialData = [
+    { name: 'Paper', amount: stats.paper, color: '#34d399' },
+    { name: 'Glass', amount: stats.glass, color: '#60a5fa' },
+    { name: 'Food Waste', amount: stats.food_organics, color: '#f472b6' },
+    { name: 'Metal', amount: stats.metal, color: '#a78bfa' },
+    { name: 'Cardboard', amount: stats.cardboard, color: '#fbbf24' }
+  ];
+
+  const generateWeeklyData = () => {
+    const totalRecycled = stats.paper + stats.glass + stats.metal + stats.cardboard;
+    const totalWaste = stats.food_organics + stats.miscellaneous_trash;
+    
+    const currentWeek = totalRecycled * 0.4;
+    const week1 = totalRecycled * 0.15;
+    const week2 = totalRecycled * 0.2;
+    const week3 = totalRecycled * 0.25;
+    
+    const currentWasteWeek = totalWaste * 0.4;
+    const wasteWeek1 = totalWaste * 0.2;
+    const wasteWeek2 = totalWaste * 0.2;
+    const wasteWeek3 = totalWaste * 0.2;
+    
+    return [
+      { name: '3 Weeks Ago', recycled: Math.round(week1), waste: Math.round(wasteWeek1) },
+      { name: '2 Weeks Ago', recycled: Math.round(week2), waste: Math.round(wasteWeek2) },
+      { name: 'Last Week', recycled: Math.round(week3), waste: Math.round(wasteWeek3) },
+      { name: 'This Week', recycled: Math.round(currentWeek), waste: Math.round(currentWasteWeek) },
+    ];
+  };
+
+  const weeklyData = generateWeeklyData();
+
   const calculateImpact = () => {
-    // Example calculations based on average values
-    const paper = 25; // from Stats
-    const glass = 18;
-    const Food_organics = 22;
-    const metal = 12;
-    const cardboard = 8;
-    const organicWaste = 15;
-    const nonRecyclables = 28;
-
-    const totalRecycled = paper + glass + Food_organics + metal + cardboard;
-    const totalWaste = organicWaste + nonRecyclables;
-
-    // Approximate calculations
-    const treesPreserved = (paper + cardboard) * 0.12;
-    const co2Reduced = totalRecycled * 2.5; // kg of CO2
-    const waterSaved = (glass * 4) + (paper * 10) + (Food_organics * 3); // liters
-    const energySaved = totalRecycled * 4.5; // kWh
+    const totalRecycled = stats.paper + stats.glass + stats.metal + stats.cardboard;
+    const non_recyclables = stats.food_organics + stats.miscellaneous_trash;
+    const totalWaste = totalRecycled + non_recyclables;
+    
+    const weeklyRecycled = totalRecycled;    
+    const paperWeight = stats.paper * 0.1;
+    const cardboardWeight = stats.cardboard * 0.2;
+    const glassWeight = stats.glass * 0.3;
+    const metalWeight = stats.metal * 0.1;
+    
+    const annualPaperWeight = paperWeight * 52;
+    const annualCardboardWeight = cardboardWeight * 52;
+    const annualGlassWeight = glassWeight * 52;
+    const annualMetalWeight = metalWeight * 52;
+    
+    const treesPreserved = (annualPaperWeight + annualCardboardWeight) * 0.017;
+    const co2Reduced = (annualPaperWeight * 3.3) + (annualGlassWeight * 0.3) + 
+                      (annualCardboardWeight * 3.1) + (annualMetalWeight * 4.0);
+    const waterSaved = (annualPaperWeight * 60) + (annualGlassWeight * 20) + 
+                      (annualCardboardWeight * 50) + (annualMetalWeight * 15);
+    const energySaved = (annualPaperWeight * 4.0) + (annualGlassWeight * 4.8) + 
+                       (annualCardboardWeight * 4.0) + (annualMetalWeight * 14.0);
+    
+    const recyclingRate = totalWaste > 0 ? ((totalRecycled / totalWaste) * 100).toFixed(1) : 0;
 
     return {
       treesPreserved: treesPreserved.toFixed(1),
       co2Reduced: co2Reduced.toFixed(1),
       waterSaved: waterSaved.toFixed(1),
       energySaved: energySaved.toFixed(1),
-      recyclingRate: ((totalRecycled / (totalRecycled + totalWaste)) * 100).toFixed(1)
+      recyclingRate: recyclingRate
     };
   };
 
   const impact = calculateImpact();
+
+  if (loading) return <div>Loading...</div>;
 
   return (
     <>
@@ -136,10 +195,10 @@ export default function Analysis() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div className="bg-emerald-950/50 rounded-lg p-6">
-                <h3 className="text-xl font-bold mb-6">Monthly Progress</h3>
+                <h3 className="text-xl font-bold mb-6">Weekly Progress</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={monthlyData}>
+                    <AreaChart data={weeklyData}>
                       <defs>
                         <linearGradient id="recycledGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
@@ -181,7 +240,6 @@ export default function Analysis() {
                   </ResponsiveContainer>
                 </div>
               </div>
-
               <div className="bg-emerald-950/50 rounded-lg p-6">
                 <h3 className="text-xl font-bold mb-6">Material Breakdown</h3>
                 <div className="h-64">

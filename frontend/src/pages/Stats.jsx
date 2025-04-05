@@ -1,6 +1,8 @@
+// src/pages/Stats.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Recycle, Trash, Coins } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const StatCard = ({ title, value, icon: Icon, className }) => (
   <div className={`p-6 rounded-lg ${className}`}>
@@ -15,6 +17,7 @@ const StatCard = ({ title, value, icon: Icon, className }) => (
 );
 
 export default function Stats() {
+  const { user } = useAuth();
   const [stats, setStats] = useState({
     paper: 0,
     glass: 0,
@@ -26,33 +29,51 @@ export default function Stats() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/waste-statistics/4/');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const data = await response.json();
-        setStats(data);
-        setLoading(false);
-      } catch (err) {
-        setError('Failed to fetch data');
-        setLoading(false);
-        console.error('Error fetching data:', err);
+  const fetchData = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/waste-statistics/?supabase_uid=${user.id}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    };
+      const data = await response.json();
+      setStats(data);
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to fetch data');
+      setLoading(false);
+      console.error('Error fetching data:', err);
+    }
+  };
 
+  useEffect(() => {
+    // Initial fetch
     fetchData();
-  }, []);
 
+    // Set up polling every 2 seconds
+    const intervalId = setInterval(() => {
+      fetchData();
+    }, 2000);
+    
+    // Clean up on unmount
+    return () => clearInterval(intervalId);
+  }, [user]);
+
+  if (!user) return <div>Please log in to view your statistics</div>;
   if (loading) return <div>Loading statistics...</div>;
   if (error) return <div>Error: {error}</div>;
 
-  const totalRecycled = stats.paper + stats.glass + stats.metal + stats.cardboard;
-  const non_recyclables = stats.food_organics + stats.miscellaneous_trash;
-  const totalWaste = totalRecycled + non_recyclables;
-  const recyclingRate = ((totalRecycled / totalWaste) * 100).toFixed(1);
+  // Calculate derived values
+  const organic_waste = stats.paper + stats.glass + stats.metal + stats.cardboard;
+  const non_recyclables = stats.miscellaneous_trash + stats.food_organics;
+  
+  const totalRecycled = organic_waste;
+  const totalWaste = non_recyclables;
+  const recyclingRate = ((totalRecycled / (totalRecycled + totalWaste)) * 100).toFixed(1);
 
   return (
     <div>
@@ -93,6 +114,8 @@ export default function Stats() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StatCard title="Non-recyclables" value={non_recyclables} icon={Trash} className="bg-gray-700" />
+            <StatCard title="Food Waste" value={stats.food_organics} icon={Trash} className="bg-gray-700" />
+            <StatCard title="Miscellaneous Trash" value={stats.miscellaneous_trash} icon={Trash} className="bg-gray-700" />
           </div>
         </div>
       </motion.div>
