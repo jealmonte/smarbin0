@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 # Create your models here.
 class User(models.Model):
     supabase_uid = models.CharField(max_length=255, unique=True)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

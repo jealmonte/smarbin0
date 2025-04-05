@@ -11,6 +11,7 @@ import signal
 import time
 from django.http import JsonResponse
 
+
 class StartCameraView(APIView):
     def post(self, request):
         supabase_uid = request.data.get('supabase_uid')
@@ -88,6 +89,8 @@ class UserAuthView(APIView):
     def post(self, request):
         supabase_uid = request.data.get('supabase_uid')
         email = request.data.get('email')
+        first_name = request.data.get('first_name')
+        last_name = request.data.get('last_name')
         
         if not supabase_uid:
             return Response(
@@ -95,25 +98,41 @@ class UserAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get or create user
-        user, created = User.objects.get_or_create(
-            supabase_uid=supabase_uid,
-            defaults={'email': email}
-        )
-        
-        # If user exists but email changed, update it
-        if not created and email and user.email != email:
-            user.email = email
-            user.save()
-        
-        # Create waste statistics for new users
-        if created:
-            WasteStatistics.objects.create(user=user)
-        
-        return Response(
-            {"id": user.id, "supabase_uid": user.supabase_uid, "email": user.email},
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
-        )
+        try:
+            # Get or create user
+            user, created = User.objects.get_or_create(
+                supabase_uid=supabase_uid,
+                defaults={'email': email}
+            )
+            
+            # If user exists but email changed, update it
+            if not created and email and user.email != email:
+                user.email = email
+                user.save()
+            
+            # Create waste statistics for new users with all fields explicitly set to 0
+            stats, stats_created = WasteStatistics.objects.get_or_create(
+                user=user,
+                defaults={
+                    'paper': 0,
+                    'glass': 0,
+                    'food_organics': 0,
+                    'metal': 0,
+                    'cardboard': 0,
+                    'miscellaneous_trash': 0
+                }
+            )
+            
+            return Response(
+                {"id": user.id, "supabase_uid": user.supabase_uid, "email": user.email},
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to create or update user: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     
 class WasteStatisticsView(APIView):
     def get(self, request):
@@ -126,45 +145,30 @@ class WasteStatisticsView(APIView):
             )
         
         try:
-            user = User.objects.get(supabase_uid=supabase_uid)
-            stats = WasteStatistics.objects.filter(user=user).first()
+            # Try to get the user
+            try:
+                user = User.objects.get(supabase_uid=supabase_uid)
+            except User.DoesNotExist:
+                # Create the user if they don't exist
+                user = User.objects.create(supabase_uid=supabase_uid, email=None)
             
-            if not stats:
-                stats = WasteStatistics.objects.create(user=user)
-                
+            # Get or create statistics for this user with explicit defaults
+            stats, created = WasteStatistics.objects.get_or_create(
+                user=user,
+                defaults={
+                    'paper': 0,
+                    'glass': 0,
+                    'food_organics': 0,
+                    'metal': 0,
+                    'cardboard': 0,
+                    'miscellaneous_trash': 0
+                }
+            )
+            
             return Response(WasteStatisticsSerializer(stats).data)
-        except User.DoesNotExist:
+        except Exception as e:
             return Response(
-                {"error": "User not found"}, 
-                status=status.HTTP_404_NOT_FOUND
+                {"error": f"Failed to get or create statistics: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
-    def post(self, request):
-        supabase_uid = request.data.get('supabase_uid')
-        waste_type = request.data.get('waste_type')
-        
-        if not supabase_uid or not waste_type:
-            return Response(
-                {"error": "Both supabase_uid and waste_type are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            user = User.objects.get(supabase_uid=supabase_uid)
-            stats, created = WasteStatistics.objects.get_or_create(user=user)
-            
-            # Increment the appropriate waste type
-            if hasattr(stats, waste_type):
-                setattr(stats, waste_type, getattr(stats, waste_type) + 1)
-                stats.save()
-                return Response(WasteStatisticsSerializer(stats).data)
-            else:
-                return Response(
-                    {"error": f"Invalid waste type: {waste_type}"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        except User.DoesNotExist:
-            return Response(
-                {"error": "User not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
+

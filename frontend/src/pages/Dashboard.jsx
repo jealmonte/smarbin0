@@ -67,8 +67,7 @@ export default function Dashboard() {
   }
 
   const userName = profile?.first_name 
-    ? `${profile.first_name}${profile.last_name ? ` ${profile.last_name}` : ''}`
-    : 'there';
+    ? `${profile.first_name}` : 'there';
 
   return (
     <>

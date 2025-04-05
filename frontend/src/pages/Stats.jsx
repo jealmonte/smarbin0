@@ -31,24 +31,33 @@ export default function Stats() {
 
   const fetchData = async () => {
     if (!user) {
-      setLoading(false);
-      return;
+        setLoading(false);
+        return;
     }
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/waste-statistics/?supabase_uid=${user.id}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      setStats(data);
-      setLoading(false);
+        const response = await fetch(`http://127.0.0.1:8000/api/waste-statistics/?supabase_uid=${user.id}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        
+        // Ensure all fields exist with at least 0 values
+        setStats({
+            paper: data.paper || 0,
+            glass: data.glass || 0,
+            food_organics: data.food_organics || 0,
+            metal: data.metal || 0,
+            cardboard: data.cardboard || 0,
+            miscellaneous_trash: data.miscellaneous_trash || 0
+        });
+        setLoading(false);
     } catch (err) {
-      setError('Failed to fetch data');
-      setLoading(false);
-      console.error('Error fetching data:', err);
+        setError('Failed to fetch data');
+        setLoading(false);
+        console.error('Error fetching data:', err);
     }
-  };
+};
 
   useEffect(() => {
     // Initial fetch
@@ -109,11 +118,17 @@ export default function Stats() {
 
         <div className="bg-gray-800 rounded-lg p-8">
           <div className="flex items-center space-x-4 mb-6">
-            <Trash size={48} className="text-white" />
-            <h2 className="text-4xl font-bold">Trash</h2>
+            <div className="flex items-center space-x-4">
+              <Trash size={48} className="text-white" />
+              <div>
+                <h2 className="text-4xl font-bold">Trash</h2>
+                <div className="flex items-center gap-4 mt-3">
+                  <span className="text-2xl">Total: {non_recyclables}</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <StatCard title="Non-recyclables" value={non_recyclables} icon={Trash} className="bg-gray-700" />
             <StatCard title="Food Waste" value={stats.food_organics} icon={Trash} className="bg-gray-700" />
             <StatCard title="Miscellaneous Trash" value={stats.miscellaneous_trash} icon={Trash} className="bg-gray-700" />
           </div>
