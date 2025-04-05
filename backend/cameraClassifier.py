@@ -12,6 +12,11 @@ import django
 import matplotlib.pyplot as plt
 import argparse
 import signal
+import serial
+
+# Setup serial connection to Arduino
+arduino = serial.Serial('COM6', 9600, timeout=1)  # Change COM6 to your Arduino port
+time.sleep(2)  # Wait for connection to establish
 
 # Add the path to your Django project
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -78,6 +83,14 @@ class WasteClassifier:
     def update_stats(self, category):
         self.stats[category] += 1
         
+        # Convert category to lowercase with underscores for Arduino
+        arduino_category = category.lower().replace(' ', '_')
+        try:
+            arduino.write((arduino_category + '\n').encode())
+            print(f"Sent command to Arduino: {arduino_category}")
+        except Exception as e:
+            print(f"Error sending to Arduino: {e}")
+    
         if not self.supabase_uid:
             print("No Supabase user ID provided, skipping database update")
             self.save_stats()
